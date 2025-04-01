@@ -1,0 +1,4 @@
+(test
+ (name test_ubx_oprot)
+ (preprocess
+  (pps ppx_jane)))
