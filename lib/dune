@@ -1,6 +1,7 @@
 (library
  (public_name ubx_oprot)
  (inline_tests)
+ (libraries core)
  (name ubx_oprot)
  (preprocess
   (pps ppx_inline_test ppx_jane)))

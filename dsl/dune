@@ -1,0 +1,5 @@
+(library
+ (libraries core core_unix.iobuf_unix int_repr)
+ (name ubx_oprot_description)
+ (preprocess
+  (pps ppx_jane)))
