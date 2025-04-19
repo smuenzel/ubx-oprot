@@ -30,6 +30,11 @@ module type D = sig
       val int64 : int64 t
     end
 
+    module Float : sig
+      val binary32 : float t
+      val binary64 : float t
+    end
+
     val char : char t
 
     val fixed_array : int -> 'a t -> 'a array t
@@ -316,12 +321,95 @@ module Make(D : D) = struct
       ]
     |> message_name ~scope:"class" "nav"
 
+  let messages_rxm =
+    group
+      [ select ?:"message_id" Typ.Raw.bit8
+          [ Uint8.of_base_int_exn 0x34, message_name "correction"
+              (group
+                 [ field Typ.Int.uint8 ?:"message_version"
+                 ; select ?:"message_version" Typ.Int.uint8
+                     [ Uint8.of_base_int_exn 0x01, group [] ]
+                 ; field Typ.Int.uint8 ?:"energy_per_bit"
+                 ; field_reserved (Typ.fixed_array 2 Typ.Int.uint8)
+                 ; field Typ.Int.uint32 ?:"status_info"
+                 ; field Typ.Int.uint16 ?:"received_message_type"
+                 ; field Typ.Int.uint16 ?:"received_message_subtype"
+                 ])
+          ; Uint8.of_base_int_exn 0x14, message_name "measurement"
+              (group
+                 [ field Typ.Int.uint8 ?:"message_version"
+                 ; select ?:"message_version" Typ.Int.uint8
+                     [ Uint8.of_base_int_exn 0x00, group [] ]
+                 ; field_reserved (Typ.fixed_array 3 Typ.Int.uint8)
+                 ; field Typ.Int.uint32 ?:"gps_time_of_week"
+                 ; field Typ.Int.uint32 ?:"glonass_time_of_week"
+                 ; field Typ.Int.uint32 ?:"beidou_time_of_week"
+                 ; field_reserved Typ.Int.uint32
+                 ; field Typ.Int.uint32 ?:"qzss_time_of_week"
+                 ; field Typ.Int.uint16 ?:"gps_time_accuracy"
+                 ; field Typ.Int.uint16 ?:"glonass_time_accuracy"
+                 ; field Typ.Int.uint16 ?:"beidou_time_accuracy"
+                 ; field_reserved Typ.Int.uint16
+                 ; field Typ.Int.uint16 ?:"qzss_time_accuracy"
+                 ; field Typ.Int.uint8 ?:"num_space_vehicles"
+                 ; field Typ.Int.uint8 ?:"flags"
+                 ; field_reserved (Typ.fixed_array 8 Typ.Int.uint8)
+                 ; repeating_group ~name:"space_vehicle"
+                     ~count:(Constraint.constant (Computation.field_value "num_space_vehicles"))
+                     [ field Typ.Int.uint8 ?:"gnss_id"
+                     ; field Typ.Int.uint8 ?:"space_vehicle_id"
+                     ; field Typ.Int.uint8 ?:"carrier_noise_ratio"
+                     ; field Typ.Int.uint8 ?:"multipath_index"
+                     ; field Typ.Int.int32 ?:"doppler_meter_second"
+                     ; field Typ.Int.int32 ?:"doppler_hz"
+                     ; field Typ.Int.uint16 ?:"whole_chips"
+                     ; field Typ.Int.uint16 ?:"fractional_chips"
+                     ; field Typ.Int.uint32 ?:"code_phase"
+                     ; field Typ.Int.uint8 ?:"int_code_phase"
+                     ; field Typ.Int.uint8 ?:"pseudorange_rms_error_index"
+                     ; field_reserved (Typ.fixed_array 2 Typ.Int.uint8)
+                     ]
+                 ])
+          ; Uint8.of_base_int_exn 0x15, message_name "raw_measurement"
+              (group
+                [ field Typ.Float.binary64 ?:"receiver_time_of_week"
+                ; field Typ.Int.uint16 ?:"receiver_week"
+                ; field Typ.Int.int8 ?:"leap_seconds"
+                ; field Typ.Int.uint8 ?:"num_measurements"
+                ; field Typ.Int.uint8 ?:"receiver_tracking_status"
+                ; field Typ.Int.uint8 ?:"message_version"
+                ; select ?:"message_version" Typ.Int.uint8
+                    [ Uint8.of_base_int_exn 0x01, group [] ]
+                ; field_reserved (Typ.fixed_array 2 Typ.Int.uint8)
+                ; repeating_group ~name:"measurement"
+                    ~count:(Constraint.constant (Computation.field_value "num_measurements"))
+                    [ field Typ.Float.binary64 ?:"pseudorange"
+                    ; field Typ.Float.binary64 ?:"carrier_phase"
+                    ; field Typ.Float.binary32 ?:"doppler"
+                    ; field Typ.Int.uint8 ?:"gnss_id"
+                    ; field Typ.Int.uint8 ?:"space_vehicle_id"
+                    ; field Typ.Int.uint8 ?:"signal_id"
+                    ; field Typ.Int.uint8 ?:"frequency_id"
+                    ; field Typ.Int.uint16 ?:"lock_time"
+                    ; field Typ.Int.uint8 ?:"carrier_to_noise_density_ratio"
+                    ; field Typ.Int.uint8 ?:"pseudorange_standard_deviation"
+                    ; field Typ.Int.uint8 ?:"carrier_phase_standard_deviation"
+                    ; field Typ.Int.uint8 ?:"doppler_standard_deviation"
+                    ; field Typ.Int.uint8 ?:"tracking_status"
+                    ; field_reserved (Typ.fixed_array 1 Typ.Int.uint8)
+                    ]
+                ])
+          ]
+      ]
+    |> message_name ~scope:"class" "rxm"
+
   let messages =
     select ?:"class_id" Typ.Raw.bit8
       [ Uint8.of_base_int_exn 0x05, messages_ack
       ; Uint8.of_base_int_exn 0x06, messages_cfg
       ; Uint8.of_base_int_exn 0x0a, messages_mon
       ; Uint8.of_base_int_exn 0x01, messages_nav
+      ; Uint8.of_base_int_exn 0x02, messages_rxm
       ]
 
   let full_message =
