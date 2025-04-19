@@ -40,6 +40,8 @@ module type D = sig
 
     val offsetof : Field_name.t -> t
 
+    val field_value : Field_name.t -> t
+
     val (+) : t -> t -> t
     val (-) : t -> t -> t
   end
@@ -89,6 +91,11 @@ module type D = sig
     :  ?count:int Constraint.t
     -> name:string
     -> entry list
+    -> entry
+
+  val buffer
+    :  ?length:int Constraint.t
+    -> name:string
     -> entry
 end
 
@@ -154,16 +161,15 @@ module Make(D : D) = struct
           ; Uint8.of_base_int_exn 0x8c, message_name "valdel"
               (group
                  [ field Type.Int.uint8 ?:"message_version"
+                 ; field Type.Int.uint8 ?:"layers"
                  ; select ?:"message_version" Type.Int.uint8
                      [ Uint8.of_base_int_exn 0x00,
                        group 
-                         [ field Type.Int.uint8 ?:"layers"
-                         ; field_reserved Type.Int.uint8
+                         [ field_reserved Type.Int.uint8
                          ]
                      ; Uint8.of_base_int_exn 0x01,
                        group
-                         [ field Type.Int.uint8 ?:"layers"
-                         ; field Type.Int.uint8 ?:"transaction"
+                         [ field Type.Int.uint8 ?:"transaction"
                          ]
                      ]
                  ; field_reserved Type.Int.uint8
@@ -171,9 +177,72 @@ module Make(D : D) = struct
                      [ field Type.Int.uint32 ?:"key"
                      ]
                  ])
+          ; Uint8.of_base_int_exn 0x8b, message_name "valget"
+              (group
+                 [ field Type.Int.uint8 ?:"message_version"
+                 ; field Type.Int.uint8 ?:"layer"
+                 ; field Type.Int.uint16 ?:"position"
+                 ; select ?:"message_version" Type.Int.uint8
+                     [ Uint8.of_base_int_exn 0x00,
+                       repeating_group ~name:"keys"
+                         [ field Type.Int.uint32 ?:"key"
+                         ]
+                     ; Uint8.of_base_int_exn 0x01,
+                       buffer ~name:"cfg_data"
+                     ]
+                 ])
+          ; Uint8.of_base_int_exn 0x8a, message_name "valset"
+              (group
+                 [ field Type.Int.uint8 ?:"message_version"
+                 ; field Type.Int.uint8 ?:"layers"
+                 ; select ?:"message_version" Type.Int.uint8
+                     [ Uint8.of_base_int_exn 0x00,
+                       group 
+                         [ field_reserved Type.Int.uint8
+                         ]
+                     ; Uint8.of_base_int_exn 0x01,
+                       group
+                         [ field Type.Int.uint8 ?:"transaction"
+                         ]
+                     ]
+                 ; field_reserved Type.Int.uint8
+                 ; buffer ~name:"cfg_data"
+                 ])
           ]
       ]
     |> message_name ~scope:"class" "cfg"
+
+  let messages_mon =
+    group
+      [ select ?:"message_id" Typ.Raw.bit8
+          [ Uint8.of_base_int_exn 0x38, message_name "rf"
+              (group
+                 [ field Type.Int.uint8 ?:"message_version"
+                 ; select ?:"message_version" Type.Int.uint8
+                     [ Uint8.of_base_int_exn 0x00, group [] ] 
+                 ; field Type.Int.uint8 ?:"n_blocks"
+                 ; field_reserved (Typ.fixed_array 2 Typ.Int.uint8)
+                 ; repeating_group ~name:"blocks"
+                     ~count:(Constraint.constant (Computation.field_value "n_blocks"))
+                     [ field Type.Int.uint8 ?:"block_id"
+                     ; field Type.Int.uint8 ?:"flags"
+                     ; field Type.Int.uint8 ?:"antenna_status"
+                     ; field Type.Int.uint8 ?:"antenna_power"
+                     ; field Type.Int.uint32 ?:"post_status"
+                     ; field_reserved Type.Int.uint32
+                     ; field Type.Int.uint16 ?:"noise_per_ms"
+                     ; field Type.Int.uint16 ?:"agc_count"
+                     ; field Type.Int.uint8 ?:"cw_suppression"
+                     ; field Type.Int.int8 ?:"ofs_i"
+                     ; field Type.Int.uint8 ?:"mag_i"
+                     ; field Type.Int.int8 ?:"ofs_q"
+                     ; field Type.Int.uint8 ?:"mag_q"
+                     ; field_reserved (Typ.fixed_array 3 Typ.Int.uint8)
+                     ]
+                 ])
+          ]
+      ]
+    |> message_name ~scope:"class" "mon"
 
   let messages_nav =
     group
@@ -185,6 +254,10 @@ module Make(D : D) = struct
                  ; field Typ.Int.int32 ?:"drift"
                  ; field Typ.Int.uint32 ?:"time_accuracy"
                  ; field Typ.Int.uint32 ?:"frequency_accuracy"
+                 ])
+          ; Uint8.of_base_int_exn 0x61, message_name "end_of_epoch"
+              (group
+                 [ field Typ.Int.uint32 ?:"time_of_week"
                  ])
           ; Uint8.of_base_int_exn 0x13, message_name "high_precision_solution_ecef"
               (group
@@ -221,6 +294,24 @@ module Make(D : D) = struct
                  ; field Typ.Int.uint32 ?: "horizontal_accuracy"
                  ; field Typ.Int.uint32 ?: "vertical_accuracy"
                  ])
+          ; Uint8.of_base_int_exn 0x34, message_name "orbit"
+              (group
+                 [ field Typ.Int.uint32 ?:"time_of_week"
+                 ; field Typ.Int.uint8 ?:"message_version"
+                 ; select ?:"message_version" Typ.Int.uint8
+                     [ Uint8.of_base_int_exn 0x00, group [] ]
+                 ; field Typ.Int.uint8 ?:"num_space_vehicles"
+                 ; field_reserved (Typ.fixed_array 2 Typ.Int.uint8)
+                 ; repeating_group ~name:"space_vehicle"
+                     ~count:(Constraint.constant (Computation.field_value "num_space_vehicles"))
+                     [ field Typ.Int.uint8 ?:"gnss_id"
+                     ; field Typ.Int.uint8 ?:"sv_id"
+                     ; field Typ.Int.uint8 ?:"flags"
+                     ; field Typ.Int.uint8 ?:"ephimeris_status"
+                     ; field Typ.Int.uint8 ?:"almanac_status"
+                     ; field Typ.Int.uint8 ?:"other_orbits"
+                     ]
+                 ])
           ]
       ]
     |> message_name ~scope:"class" "nav"
@@ -229,6 +320,7 @@ module Make(D : D) = struct
     select ?:"class_id" Typ.Raw.bit8
       [ Uint8.of_base_int_exn 0x05, messages_ack
       ; Uint8.of_base_int_exn 0x06, messages_cfg
+      ; Uint8.of_base_int_exn 0x0a, messages_mon
       ; Uint8.of_base_int_exn 0x01, messages_nav
       ]
 
